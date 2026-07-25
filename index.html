@@ -220,31 +220,44 @@ main{flex:1; padding:8px 16px 40px;}
   display:flex; align-items:center; justify-content:center; gap:6px;
 }
 .map-wrap{
-  position:relative; border:1px solid var(--edge); border-radius:16px; overflow:hidden;
-  background:#EFEDE4;
+  position:relative; border:1px solid var(--edge); border-radius:16px; overflow:auto;
+  background:#EFEDE4; -webkit-overflow-scrolling:touch;
 }
 .map-scroll{
-  overflow:visible; -webkit-overflow-scrolling:touch;
+  overflow:visible;
 }
 .map-inner{
   position:relative; width:100%;
 }
+@media (max-width:640px){
+  .map-inner{ width:175%; }
+}
 .map-inner svg{ display:block; width:100%; height:auto; }
 .map-hotspot{
   position:absolute; transform:translate(-50%,-50%);
-  width:22px; height:22px;
+  width:26px; height:26px;
   border:none; background:transparent; padding:0; cursor:pointer;
   display:flex; align-items:center; justify-content:center;
   -webkit-tap-highlight-color:transparent;
+  z-index:2;
 }
 .map-hotspot .dot{
-  width:8px; height:8px; border-radius:50%;
+  width:9px; height:9px; border-radius:50%;
   background:#E8483A;
   box-shadow:0 0 0 2px #fff, 0 1px 3px rgba(0,0,0,0.5);
   transition:transform .15s ease;
   pointer-events:none;
 }
 .map-hotspot:active .dot{ transform:scale(1.9); background:#37D6C4; }
+.map-label{
+  position:absolute; top:0; white-space:nowrap; pointer-events:none; z-index:1;
+  font-family:'Barlow Condensed',sans-serif; font-weight:600;
+  font-size:clamp(8px, 1.7vw, 11px);
+  color:#1E2430; letter-spacing:.01em;
+  text-shadow:0 0 3px #EFEDE4, 0 0 3px #EFEDE4, 0 0 3px #EFEDE4, 0 0 5px #EFEDE4;
+}
+.map-label.dir-right{ transform:translate(9px,-50%); }
+.map-label.dir-left{ transform:translate(calc(-100% - 9px),-50%); }
 .map-legend{
   display:flex; justify-content:center; gap:14px; padding:10px 6px 2px; flex-wrap:wrap;
 }
@@ -3915,9 +3928,15 @@ function buildQuickChips(){
 function renderMapHotspots(){
   const inner = document.getElementById('map-inner');
   const hotspots = APP_DATA.mapHotspots || {};
-  document.querySelectorAll('.map-hotspot').forEach(el => el.remove());
-  Object.entries(hotspots).forEach(([sid, h]) => {
-    if (!STATIONS[sid]) return;
+  document.querySelectorAll('.map-hotspot, .map-label').forEach(el => el.remove());
+
+  // Stations whose dots sit almost on top of each other (e.g. Aigio/Diakopto/Patras)
+  // would otherwise print overlapping labels, so nearby ones get stacked vertically.
+  const minGap = 2.1;
+  const placedLabelYs = [];
+  const entries = Object.entries(hotspots).filter(([sid]) => STATIONS[sid]).sort((a,b) => a[1].y - b[1].y);
+
+  entries.forEach(([sid, h]) => {
     const btn = document.createElement('button');
     btn.className = 'map-hotspot';
     btn.style.left = h.x + '%';
@@ -3926,6 +3945,19 @@ function renderMapHotspots(){
     btn.innerHTML = '<span class="dot"></span>';
     btn.onclick = () => selectStation(sid);
     inner.appendChild(btn);
+
+    let labelY = h.y;
+    placedLabelYs.forEach(p => {
+      if (Math.abs(p.x - h.x) < 3 && Math.abs(p.y - labelY) < minGap) labelY = p.y + minGap;
+    });
+    placedLabelYs.push({ x: h.x, y: labelY });
+
+    const label = document.createElement('span');
+    label.className = 'map-label ' + (h.x > 82 ? 'dir-left' : 'dir-right');
+    label.style.left = h.x + '%';
+    label.style.top = labelY + '%';
+    label.textContent = stName(sid);
+    inner.appendChild(label);
   });
 }
 
