@@ -3949,7 +3949,8 @@ function renderStationResults(query){
     row.className = 'station-result';
     const depCount = (DEPARTURES[id] || []).length;
     row.innerHTML = `<span><span class="name-el">${stName(id)}</span><span class="name-en">${stAlt(id)}</span></span><span class="count">${depCount}</span>`;
-    row.onclick = () => selectStation(id);
+    // onmousedown fires before the input's blur, so the selection registers first
+    row.onmousedown = (e) => { e.preventDefault(); selectStation(id); };
     box.appendChild(row);
   });
 }
@@ -4231,6 +4232,13 @@ document.getElementById('search-input').addEventListener('input', e => {
   const v = e.target.value;
   document.getElementById('clear-search').style.display = v ? 'flex' : 'none';
   renderStationResults(v);
+});
+document.getElementById('search-input').addEventListener('focus', e => {
+  if (e.target.value) renderStationResults(e.target.value);
+});
+document.getElementById('search-input').addEventListener('blur', () => {
+  // slight delay so a row's onmousedown can run first
+  setTimeout(() => { document.getElementById('station-results').style.display = 'none'; }, 150);
 });
 document.getElementById('clear-search').onclick = () => {
   document.getElementById('search-input').value = '';
