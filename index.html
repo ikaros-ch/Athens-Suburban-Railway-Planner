@@ -3867,7 +3867,10 @@ function planTrip(fromId, toId, afterMin, mode, maxResults){
           if (stops2[j2][0] === toId){
             const arr2 = adjMin(timeToMinutes(stops2[j2][1]));
             const wait = dep2 - arr1;
-            if (!best || arr2 < best.arr2 || (arr2 === best.arr2 && wait < best.wait)){
+            // Ties on arrival time keep whichever transfer station was found first (k
+            // increases along the route), i.e. the earliest shared stop between the two
+            // lines - even if that means a longer wait there than a later transfer point.
+            if (!best || arr2 < best.arr2){
               best = { arr2, wait, tr1, i1, k, transferSt, tr2, it2, j2, dep1, arr1, dep2 };
             }
             break;
@@ -3917,7 +3920,9 @@ function planTrip(fromId, toId, afterMin, mode, maxResults){
               if (stops3[j3][0] === toId){
                 const arr3 = adjMin(timeToMinutes(stops3[j3][1]));
                 const wait1 = dep2 - arrA, wait2 = dep3 - arrB;
-                if (!best || arr3 < best.arr3 || (arr3 === best.arr3 && (wait1+wait2) < (best.wait1+best.wait2))){
+                // Same tie-break as the one-transfer search: on equal arrival, keep the
+                // earliest-found (earliest shared) transfer stations over shorter waits.
+                if (!best || arr3 < best.arr3){
                   best = { tr1, i1, k1, transferA, tr2, i2, k2, transferB, tr3, i3, j3,
                             dep1, arrA, dep2, arrB, dep3, arr3, wait1, wait2 };
                 }
