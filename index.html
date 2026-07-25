@@ -3731,6 +3731,7 @@ const I18N = {
     plannerPicking: 'Πάτα μια στάση στη λίστα για να την επιλέξεις',
     directTrain: 'ΑΠΕΥΘΕΙΑΣ',
     oneTransfer: '1 ΜΕΤΑΦΟΡΑ',
+    twoTransfers: '2 ΜΕΤΑΦΟΡΕΣ',
     transferAt: 'Μεταφορά στον σταθμό',
     waitLabel: 'αναμονή',
     plannerSameStation: 'Επίλεξε δύο διαφορετικές στάσεις.',
@@ -3757,6 +3758,7 @@ const I18N = {
     plannerPicking: 'Tap a stop in the list to select it',
     directTrain: 'DIRECT',
     oneTransfer: '1 TRANSFER',
+    twoTransfers: '2 TRANSFERS',
     transferAt: 'Transfer at',
     waitLabel: 'wait',
     plannerSameStation: 'Pick two different stops.',
@@ -3862,8 +3864,61 @@ function planTrip(fromId, toId, afterMin, mode, maxResults){
     }
     if (best) candidates.push(best);
   });
-  candidates.sort((a,b) => a.dep1 - b.dep1);
-  return { kind: candidates.length ? 'transfer' : 'none', options: candidates.slice(0, maxResults) };
+  if (candidates.length){
+    candidates.sort((a,b) => a.dep1 - b.dep1);
+    return { kind: 'transfer', options: candidates.slice(0, maxResults) };
+  }
+
+  // Two transfers (three legs) - only tried once direct and one-transfer both come up empty.
+  let candidates2 = [];
+  (STATION_TRIP_INDEX[fromId] || []).forEach(([t1i, i1]) => {
+    const tr1 = TRIPS[t1i];
+    if (!tripDayOk(tr1, mode)) return;
+    const stops1 = tr1[4];
+    const dep1 = adjMin(timeToMinutes(stops1[i1][1]));
+    if (dep1 < afterMin) return;
+    let best = null;
+    for (let k1 = i1 + 1; k1 < stops1.length; k1++){
+      const transferA = stops1[k1][0];
+      const arrA = adjMin(timeToMinutes(stops1[k1][1]));
+      const atA = STATION_TRIP_INDEX[transferA] || [];
+      for (const [t2i, i2] of atA){
+        if (t2i === t1i) continue;
+        const tr2 = TRIPS[t2i];
+        if (!tripDayOk(tr2, mode)) continue;
+        const stops2 = tr2[4];
+        const dep2 = adjMin(timeToMinutes(stops2[i2][1]));
+        if (dep2 < arrA + buffer) continue;
+        for (let k2 = i2 + 1; k2 < stops2.length; k2++){
+          const transferB = stops2[k2][0];
+          const arrB = adjMin(timeToMinutes(stops2[k2][1]));
+          const atB = STATION_TRIP_INDEX[transferB] || [];
+          for (const [t3i, i3] of atB){
+            if (t3i === t2i || t3i === t1i) continue;
+            const tr3 = TRIPS[t3i];
+            if (!tripDayOk(tr3, mode)) continue;
+            const stops3 = tr3[4];
+            const dep3 = adjMin(timeToMinutes(stops3[i3][1]));
+            if (dep3 < arrB + buffer) continue;
+            for (let j3 = i3 + 1; j3 < stops3.length; j3++){
+              if (stops3[j3][0] === toId){
+                const arr3 = adjMin(timeToMinutes(stops3[j3][1]));
+                const wait1 = dep2 - arrA, wait2 = dep3 - arrB;
+                if (!best || arr3 < best.arr3 || (arr3 === best.arr3 && (wait1+wait2) < (best.wait1+best.wait2))){
+                  best = { tr1, i1, k1, transferA, tr2, i2, k2, transferB, tr3, i3, j3,
+                            dep1, arrA, dep2, arrB, dep3, arr3, wait1, wait2 };
+                }
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+    if (best) candidates2.push(best);
+  });
+  candidates2.sort((a,b) => a.dep1 - b.dep1);
+  return { kind: candidates2.length ? 'transfer2' : 'none', options: candidates2.slice(0, maxResults) };
 }
 
 function t(key){ return I18N[LANG][key]; }
@@ -3873,7 +3928,8 @@ function lineName(idx){ const l = LINES[idx]; return LANG==='el' ? l.nameEl : l.
 function dirLabel(idx, dirIdx){ const l = LINES[idx]; return LANG==='el' ? l.directionsEl[dirIdx] : l.directions[dirIdx]; }
 
 function timeToMinutes(t){
-  const parts = t.split('.');
+  // most lines use "H.MM" but at least one (Kiato-Patras) is sourced as "H:MM"
+  const parts = t.split(/[.:]/);
   return parseInt(parts[0],10)*60 + parseInt(parts[1],10);
 }
 function displayTime(tstr){ return tstr.replace('.', ':'); }
@@ -4099,7 +4155,7 @@ function renderPlannerResults(){
             <div class="leg-station">${stName(plannerTo)}</div>
           </div>
         </div>`;
-    } else {
+    } else if (result.kind === 'transfer') {
       const tr1 = opt.tr1, tr2 = opt.tr2;
       const dep1Time = tr1[4][opt.i1][1], arr1Time = tr1[4][opt.k][1];
       const dep2Time = tr2[4][opt.it2][1], arr2Time = tr2[4][opt.j2][1];
@@ -4128,6 +4184,51 @@ function renderPlannerResults(){
             <div class="leg-meta">${lineName(tr2[0])} · ${tr2[3]}</div>
             <div style="height:12px"></div>
             <div class="leg-time">${displayTime(arr2Time)}</div>
+            <div class="leg-station">${stName(plannerTo)}</div>
+          </div>
+        </div>`;
+    } else {
+      const tr1 = opt.tr1, tr2 = opt.tr2, tr3 = opt.tr3;
+      const dep1Time = tr1[4][opt.i1][1], arr1Time = tr1[4][opt.k1][1];
+      const dep2Time = tr2[4][opt.i2][1], arr2Time = tr2[4][opt.k2][1];
+      const dep3Time = tr3[4][opt.i3][1], arr3Time = tr3[4][opt.j3][1];
+      card.innerHTML = `
+        <div class="itinerary-head">
+          <span class="badge-direct" style="color:var(--bus); border-color:rgba(199,146,234,0.4);">${t('twoTransfers')}</span>
+          <span class="total-time">${durationLabel(opt.dep1, opt.arr3)}</span>
+        </div>
+        <div class="leg">
+          <div class="leg-rail"><div class="leg-dot"></div><div class="leg-line"></div><div class="leg-dot"></div></div>
+          <div class="leg-body">
+            <div class="leg-time">${displayTime(dep1Time)}</div>
+            <div class="leg-station">${stName(plannerFrom)}</div>
+            <div class="leg-meta">${lineName(tr1[0])} · ${tr1[3]}</div>
+            <div style="height:12px"></div>
+            <div class="leg-time">${displayTime(arr1Time)}</div>
+            <div class="leg-station">${stName(opt.transferA)}</div>
+            <div class="transfer-note">${t('transferAt')} ${stName(opt.transferA)} · ${t('waitLabel')} ${opt.wait1} ${t('min')}</div>
+          </div>
+        </div>
+        <div class="leg">
+          <div class="leg-rail"><div class="leg-dot"></div><div class="leg-line"></div><div class="leg-dot"></div></div>
+          <div class="leg-body">
+            <div class="leg-time">${displayTime(dep2Time)}</div>
+            <div class="leg-station">${stName(opt.transferA)}</div>
+            <div class="leg-meta">${lineName(tr2[0])} · ${tr2[3]}</div>
+            <div style="height:12px"></div>
+            <div class="leg-time">${displayTime(arr2Time)}</div>
+            <div class="leg-station">${stName(opt.transferB)}</div>
+            <div class="transfer-note">${t('transferAt')} ${stName(opt.transferB)} · ${t('waitLabel')} ${opt.wait2} ${t('min')}</div>
+          </div>
+        </div>
+        <div class="leg">
+          <div class="leg-rail"><div class="leg-dot"></div><div class="leg-line"></div><div class="leg-dot"></div></div>
+          <div class="leg-body">
+            <div class="leg-time">${displayTime(dep3Time)}</div>
+            <div class="leg-station">${stName(opt.transferB)}</div>
+            <div class="leg-meta">${lineName(tr3[0])} · ${tr3[3]}</div>
+            <div style="height:12px"></div>
+            <div class="leg-time">${displayTime(arr3Time)}</div>
             <div class="leg-station">${stName(plannerTo)}</div>
           </div>
         </div>`;
