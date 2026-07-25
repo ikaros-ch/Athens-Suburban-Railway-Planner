@@ -309,8 +309,9 @@ main{flex:1; padding:8px 16px 40px;}
 }
 .next-hero .eyebrow{margin-bottom:8px;}
 .next-hero-body{display:flex; align-items:center; justify-content:space-between; gap:14px;}
+.next-hero-body + .next-hero-body{ margin-top:10px; padding-top:10px; border-top:1px solid var(--edge); }
 .flap-time{
-  font-family:'Space Mono',monospace; font-weight:700; font-size:44px; color:var(--amber);
+  font-family:'Space Mono',monospace; font-weight:700; font-size:36px; color:var(--amber);
   letter-spacing:.02em; text-shadow:0 0 18px rgba(255,179,0,0.35);
   display:flex;
 }
@@ -323,7 +324,11 @@ main{flex:1; padding:8px 16px 40px;}
 }
 .next-hero-meta{text-align:right;}
 .next-hero-meta .countdown{font-family:'Space Mono',monospace; font-size:13px; color:var(--teal); font-weight:700;}
-.next-hero-meta .dest{font-family:'Barlow Condensed',sans-serif; font-size:16px; font-weight:600; margin-top:2px;}
+.next-hero-meta .dest{
+  font-family:'Barlow Condensed',sans-serif; font-size:15px; font-weight:600; margin-top:2px;
+  display:flex; align-items:center; justify-content:flex-end; gap:6px;
+}
+.next-hero-meta .dest .line-dot{flex:none;}
 .next-hero-meta .line-name{font-size:11px; color:var(--text-dim); margin-top:2px;}
 .next-hero .no-more{font-family:'Barlow Condensed',sans-serif; font-size:18px; color:var(--text-dim); padding:6px 0;}
 
@@ -4150,31 +4155,39 @@ function renderStationPanel(){
     groups[key].push(d);
   });
 
-  // Next departure across everything (today, from now, wrapping midnight window handled loosely)
-  let nextDep = null, nextKey=null;
-  for (const d of filtered){
-    const mins = timeToMinutes(d[2]);
-    const adj = mins < 180 ? mins + 1440 : mins; // after-midnight run counts as late "today"
-    if (adj >= now){ nextDep = d; break; }
-  }
+  // Next departure per direction (line+direction group) rather than just one overall
+  const nextByGroup = {};
+  groupOrder.forEach(key => {
+    for (const d of groups[key]){
+      const mins = timeToMinutes(d[2]);
+      const adj = mins < 180 ? mins + 1440 : mins; // after-midnight run counts as late "today"
+      if (adj >= now){ nextByGroup[key] = d; break; }
+    }
+  });
 
   const hero = document.getElementById('next-hero');
-  if (nextDep){
-    const destName = stName(nextDep[4]);
-    const mins = timeToMinutes(nextDep[2]);
-    const adj = mins < 180 ? mins + 1440 : mins;
-    const diff = Math.max(0, adj - now);
-    const timeStr = displayTime(nextDep[2]);
-    hero.innerHTML = `
-      <div class="eyebrow">${t('next')}</div>
+  const upcomingKeys = groupOrder.filter(key => nextByGroup[key]);
+  if (upcomingKeys.length){
+    const rows = upcomingKeys.map(key => {
+      const d = nextByGroup[key];
+      const lineIdx = d[0];
+      const color = LINE_COLORS[LINES[lineIdx].id] || 'var(--teal)';
+      const destName = stName(d[4]);
+      const mins = timeToMinutes(d[2]);
+      const adj = mins < 180 ? mins + 1440 : mins;
+      const diff = Math.max(0, adj - now);
+      const timeStr = displayTime(d[2]);
+      return `
       <div class="next-hero-body">
         <div class="flap-time">${[...timeStr].map(ch=>`<span>${ch}</span>`).join('')}</div>
         <div class="next-hero-meta">
           <div class="countdown">${diff===0? t('now') : diff+' '+t('min')}</div>
-          <div class="dest">${t('towards')} ${destName}</div>
-          <div class="line-name">${lineName(nextDep[0])} · ${nextDep[3]}</div>
+          <div class="dest"><span class="line-dot" style="background:${color}"></span>${t('towards')} ${destName}</div>
+          <div class="line-name">${lineName(lineIdx)} · ${d[3]}</div>
         </div>
       </div>`;
+    }).join('');
+    hero.innerHTML = `<div class="eyebrow">${t('next')}</div>${rows}`;
   } else {
     hero.innerHTML = `<div class="eyebrow">${t('next')}</div><div class="no-more">${t('noMore')}</div>`;
   }
@@ -4206,7 +4219,7 @@ function renderStationPanel(){
       const mins = timeToMinutes(d[2]);
       const adj = mins < 180 ? mins + 1440 : mins;
       const isPast = adj < now;
-      const isNext = d === nextDep;
+      const isNext = d === nextByGroup[key];
       const row = document.createElement('div');
       row.className = 'dep-row' + (isPast? ' past':'') + (isNext? ' is-next':'');
       const kindIcon = LINES[lineIdx].kind === 'bus'
