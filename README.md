@@ -2,7 +2,7 @@
 
 https://ikaros-ch.github.io/Athens-Suburban-Railway-Planner/
 
-A Simple webapp to track Athens suburnan railway's times.
+A Simple webapp to track Athens suburban railway's departure times.
 
 the itenareries are not updated automatically.
 
