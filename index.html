@@ -3938,7 +3938,6 @@ function t(key){ return I18N[LANG][key]; }
 function stName(id){ return LANG==='el' ? STATIONS[id][1] : STATIONS[id][0]; }
 function stAlt(id){ return LANG==='el' ? STATIONS[id][0] : STATIONS[id][1]; }
 function lineName(idx){ const l = LINES[idx]; return LANG==='el' ? l.nameEl : l.nameEn; }
-function dirLabel(idx, dirIdx){ const l = LINES[idx]; return LANG==='el' ? l.directionsEl[dirIdx] : l.directions[dirIdx]; }
 
 function timeToMinutes(t){
   // most lines use "H.MM" but at least one (Kiato-Patras) is sourced as "H:MM"
@@ -4053,7 +4052,7 @@ function renderStationResults(query){
   matches.slice(0, 30).forEach(([id, pair]) => {
     const row = document.createElement('div');
     row.className = 'station-result';
-    const depCount = (DEPARTURES[id] || []).length;
+    const depCount = (DEPARTURES[id] || []).filter(d => d[6] !== 1).length;
     row.innerHTML = `<span><span class="name-el">${stName(id)}</span><span class="name-en">${stAlt(id)}</span></span><span class="count">${depCount}</span>`;
     // onmousedown fires before the input's blur, so the selection registers first
     row.onmousedown = (e) => { e.preventDefault(); selectStation(id); };
@@ -4267,14 +4266,19 @@ function renderStationPanel(){
     : '';
 
   const all = DEPARTURES[id] || [];
-  const filtered = all.filter(d => passesFilter(d[0], d[5]));
+  // isDest marks a row where this station is the trip's final stop - it's an arrival
+  // record, not a boardable departure, so it doesn't belong on a departures board.
+  const filtered = all.filter(d => d[6] !== 1 && passesFilter(d[0], d[5]));
   const now = nowMinutes();
 
-  // group by line+direction preserving overall time order within group
+  // Group by line+direction+actual destination (not just line+direction): some lines
+  // (e.g. the Airport line) run a mix of full-route and shorter-turnback trips - e.g.
+  // some "Airport-Piraeus" departures actually only run as far as Ano Liosia - so two
+  // trips sharing a line/direction can still end at different stations.
   const groups = {};
   const groupOrder = [];
   filtered.forEach(d => {
-    const key = d[0] + '_' + d[1];
+    const key = d[0] + '_' + d[1] + '_' + d[4];
     if (!groups[key]){ groups[key] = []; groupOrder.push(key); }
     groups[key].push(d);
   });
@@ -4324,7 +4328,7 @@ function renderStationPanel(){
   groupOrder.forEach(key => {
     const deps = groups[key];
     const first = deps[0];
-    const lineIdx = first[0], dirIdx = first[1];
+    const lineIdx = first[0], destSid = first[4];
     const color = LINE_COLORS[LINES[lineIdx].id] || 'var(--teal)';
     const scope = LINES[lineIdx].dayScope;
 
@@ -4333,7 +4337,7 @@ function renderStationPanel(){
     let scopeBadge = '';
     if (scope === 'weekday') scopeBadge = `<span class="scope-badge">${t('weekdaysOnly')}</span>`;
     if (scope === 'weekend') scopeBadge = `<span class="scope-badge">${t('weekendOnly')}</span>`;
-    head.innerHTML = `<span class="line-dot" style="background:${color}"></span><h3>${lineName(lineIdx)} · ${dirLabel(lineIdx, dirIdx)}</h3>${scopeBadge}`;
+    head.innerHTML = `<span class="line-dot" style="background:${color}"></span><h3>${lineName(lineIdx)} · ${t('towards')} ${stName(destSid)}</h3>${scopeBadge}`;
 
     const groupDiv = document.createElement('div');
     groupDiv.className = 'line-group';
