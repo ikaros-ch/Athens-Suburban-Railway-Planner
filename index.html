@@ -187,6 +187,10 @@ header{
   border-radius:8px; padding:5px 9px; margin:4px 0 8px; display:inline-block;
 }
 .planner-empty{ text-align:center; color:var(--text-dim); font-size:13px; padding:16px 10px; }
+.planner-note{
+  font-size:12.5px; color:var(--amber); background:rgba(255,179,0,0.08); border:1px solid rgba(255,179,0,0.3);
+  border-radius:12px; padding:10px 12px; margin-bottom:12px; line-height:1.4;
+}
 
 /* results dropdown list of matching stations */
 #station-results{
@@ -3757,6 +3761,7 @@ const I18N = {
     waitLabel: 'αναμονή',
     plannerSameStation: 'Επίλεξε δύο διαφορετικές στάσεις.',
     plannerNoResults: 'Δεν βρέθηκε διαδρομή για αυτόν τον συνδυασμό στάσεων/ημέρας.',
+    plannerNextDay: 'Δεν υπάρχουν άλλα δρομολόγια σήμερα για αυτή την επιλογή. Δείτε παρακάτω τα δρομολόγια της επόμενης ημέρας.',
     board: 'Επιβίβαση', arrive: 'Άφιξη',
     skaWalkNote: 'Η μεταφορά εδώ μεταξύ γραμμών Αεροδρομίου και Χαλκίδας γίνεται με περπάτημα, όχι στην ίδια αποβάθρα.',
     walkRequired: 'απαιτείται περπάτημα',
@@ -3786,6 +3791,7 @@ const I18N = {
     waitLabel: 'wait',
     plannerSameStation: 'Pick two different stops.',
     plannerNoResults: 'No route found for that stop combination / day.',
+    plannerNextDay: 'No more departures today for this combination. Showing next day\'s departures below.',
     board: 'Board', arrive: 'Arrive',
     skaWalkNote: 'Transferring here between the Airport and Chalkida lines is a walk between platforms, not a same-platform change.',
     walkRequired: 'walking required',
@@ -3822,6 +3828,10 @@ function adjMin(m){ return m < 180 ? m + 1440 : m; }
 
 function plannerEffectiveMode(){
   if (plannerDayMode === 'auto') return isWeekendToday() ? 'weekend' : 'weekday';
+  return plannerDayMode;
+}
+function plannerEffectiveModeTomorrow(){
+  if (plannerDayMode === 'auto') return isWeekendTomorrow() ? 'weekend' : 'weekday';
   return plannerDayMode;
 }
 
@@ -3989,6 +3999,10 @@ function nowMinutes(){
 }
 function isWeekendToday(){
   const day = new Date().getDay(); // 0 Sun .. 6 Sat
+  return day === 0 || day === 6;
+}
+function isWeekendTomorrow(){
+  const day = (new Date().getDay() + 1) % 7;
   return day === 0 || day === 6;
 }
 function effectiveMode(){
@@ -4183,10 +4197,24 @@ function renderPlannerResults(){
   }
   const mode = plannerEffectiveMode();
   const now = adjMin(plannerAfterMinutes());
-  const result = planTrip(plannerFrom, plannerTo, now, mode, 4);
+  let result = planTrip(plannerFrom, plannerTo, now, mode, 4);
+  let showingNextDay = false;
   if (result.kind === 'none' || result.options.length === 0){
-    box.innerHTML = `<div class="planner-empty">${t('plannerNoResults')}</div>`;
-    return;
+    const tomorrowMode = plannerEffectiveModeTomorrow();
+    const tomorrowResult = planTrip(plannerFrom, plannerTo, 0, tomorrowMode, 4);
+    if (tomorrowResult.kind !== 'none' && tomorrowResult.options.length){
+      result = tomorrowResult;
+      showingNextDay = true;
+    } else {
+      box.innerHTML = `<div class="planner-empty">${t('plannerNoResults')}</div>`;
+      return;
+    }
+  }
+  if (showingNextDay){
+    const note = document.createElement('div');
+    note.className = 'planner-note';
+    note.textContent = t('plannerNextDay');
+    box.appendChild(note);
   }
   result.options.forEach(opt => {
     const card = document.createElement('div');
